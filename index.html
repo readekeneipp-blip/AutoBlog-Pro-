@@ -3,45 +3,41 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AutoBlog Pro | AI Content Engine</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <title>AutoBlog Pro</title>
     <style>
-        body { background-color: #020617; color: white; font-family: sans-serif; }
-        .glass { background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 24px; }
-    </script>
-    </head>
-      <body class="p-6">
-    <nav class="flex justify-between items-center mb-12">
-        <h1 class="text-2xl font-bold text-blue-500">AutoBlog Pro</h1>
-        <div class="bg-blue-600 px-4 py-1 rounded-full text-sm font-bold">BETA</div>
-    </nav>
+        body { background-color: #020617; color: #ffffff; font-family: -apple-system, sans-serif; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+        .card { background: #0f172a; border: 1px solid #1e293b; border-radius: 16px; padding: 24px; width: 100%; max-width: 400px; margin-top: 20px; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); }
+        h1 { color: #3b82f6; margin-bottom: 5px; }
+        p { color: #94a3b8; font-size: 14px; margin-bottom: 20px; text-align: center; }
+        input { width: 100%; padding: 12px; background: #1e293b; border: 1px solid #334155; border-radius: 8px; color: white; margin-bottom: 15px; box-sizing: border-box; }
+        button { width: 100%; padding: 14px; background: #2563eb; border: none; border-radius: 8px; color: white; font-weight: bold; cursor: pointer; }
+        button:disabled { background: #1e3a8a; opacity: 0.7; }
+        #result { margin-top: 20px; color: #cbd5e1; font-size: 14px; line-height: 1.6; white-space: pre-wrap; width: 100%; }
+        .loading { color: #60a5fa; display: none; margin-top: 10px; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <h1>AutoBlog Pro</h1>
+    <p>AI Blog Automation is Live</p>
 
-    <header class="text-center mb-12">
-        <h2 class="text-4xl font-extrabold mb-4 text-white">Build Authority <span class="text-blue-500">While You Sleep.</span></h2>
-        <p class="text-slate-400">AI-powered blog automation for niche site owners.</p>
-    </header>
-
-    <div class="glass p-8 max-w-xl mx-auto">
-        <h3 class="text-xl font-bold mb-6">Generate AI Content</h3>
-        <input id="topic" type="text" placeholder="Enter topic (e.g. Best Hiking Boots)" class="w-full bg-slate-800 border border-slate-700 p-4 rounded-xl mb-4 outline-none focus:border-blue-500 text-white">
-        <button onclick="generate()" id="btn" class="w-full bg-blue-600 py-4 rounded-xl font-bold hover:bg-blue-700 transition">Generate Post</button>
-        
-        <div id="loading" class="hidden text-center mt-4 text-blue-400 animate-pulse">AI is thinking...</div>
-        
-        <div id="result" class="mt-8 text-slate-300 whitespace-pre-wrap text-sm leading-relaxed max-h-64 overflow-y-auto"></div>
+    <div class="card">
+        <input id="topic" type="text" placeholder="Enter topic (e.g. Fishing Tips)">
+        <button onclick="generate()" id="btn">Generate AI Post</button>
+        <div id="loading" class="loading">Generating... please wait...</div>
+        <div id="result"></div>
     </div>
 
     <script>
-      async function generate() {
+        async function generate() {
             const topic = document.getElementById('topic').value;
             const btn = document.getElementById('btn');
             const resDiv = document.getElementById('result');
             const loadDiv = document.getElementById('loading');
 
-            if(!topic) return alert('Enter a topic!');
+            if(!topic) return alert('Please enter a topic!');
 
             btn.disabled = true;
-            loadDiv.classList.remove('hidden');
+            loadDiv.style.display = 'block';
             resDiv.innerHTML = '';
 
             try {
@@ -53,12 +49,12 @@
                 const data = await response.json();
                 resDiv.innerHTML = data.content;
             } catch (e) {
-                alert('Error connecting to API. Make sure Render is finished deploying!');
+                alert('Error: Check Render logs');
             } finally {
                 btn.disabled = false;
-                loadDiv.classList.add('hidden');
+                loadDiv.style.display = 'none';
             }
-      }
+        }
     </script>
 </body>
 </html>
