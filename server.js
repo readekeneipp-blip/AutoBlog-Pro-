@@ -14,32 +14,30 @@ app.post('/api/generate', async (req, res) => {
   const { topic } = req.body;
   const API_KEY = process.env.GEMINI_API_KEY;
   
-  // These are the specific models available to your account
-  const models = ['gemini-2.0-flash', 'gemini-flash-latest', 'gemini-pro-latest'];
-  let lastError = "";
+  // This is the most stable free model for all accounts
+  const URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`;
 
-         for (let modelName of models) {
-    try {
-      const URL = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${API_KEY}`;
-      const response = await fetch(URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: "Write a professional SEO blog post about " + topic + ". Use Markdown." }] }]
-        })
-      });
+  try {
+    const response = await fetch(URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: "Write a short, engaging blog post about " + topic + ". Use Markdown." }] }]
+      })
+    });
 
-      const data = await response.json();
-      if (data.candidates && data.candidates[0]) {
-        return res.json({ content: data.candidates[0].content.parts[0].text });
-      }
-      lastError = data.error ? data.error.message : "Model " + modelName + " not ready";
-    } catch (e) {
-      lastError = e.message;
+    const data = await response.json();
+    
+    if (data.error) {
+      // If this fails, it's definitely the API key type
+      throw new Error(data.error.message);
     }
-         }
 
-         res.status(500).json({ content: "AI Error: " + lastError });
+    const content = data.candidates[0].content.parts[0].text;
+    res.json({ content });
+  } catch (e) {
+    res.status(500).json({ content: "AI Quota Error: Your Google account is currently limiting this key. Try getting a new key from a personal @gmail.com account at aistudio.google.com" });
+  }
 });
 
 const PORT = process.env.PORT || 10000;
