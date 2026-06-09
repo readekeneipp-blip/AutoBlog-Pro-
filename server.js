@@ -19,7 +19,7 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 app.post('/api/generate', async (req, res) => {
   const { topic } = req.body;
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
     const result = await model.generateContent(`Write a high-quality blog post about ${topic} for a niche site. Use Markdown formatting.`);
     res.json({ content: (await result.response).text() });
   } catch (e) { 
