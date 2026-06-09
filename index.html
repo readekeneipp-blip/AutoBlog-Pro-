@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AutoBlog Pro | AI Content Engine</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #020617; color: white; font-family: sans-serif; }
+        .glass { background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 24px; }
+    </script>
+    </head>
+      <body class="p-6">
+    <nav class="flex justify-between items-center mb-12">
+        <h1 class="text-2xl font-bold text-blue-500">AutoBlog Pro</h1>
+        <div class="bg-blue-600 px-4 py-1 rounded-full text-sm font-bold">BETA</div>
+    </nav>
+
+    <header class="text-center mb-12">
+        <h2 class="text-4xl font-extrabold mb-4 text-white">Build Authority <span class="text-blue-500">While You Sleep.</span></h2>
+        <p class="text-slate-400">AI-powered blog automation for niche site owners.</p>
+    </header>
+
+    <div class="glass p-8 max-w-xl mx-auto">
+        <h3 class="text-xl font-bold mb-6">Generate AI Content</h3>
+        <input id="topic" type="text" placeholder="Enter topic (e.g. Best Hiking Boots)" class="w-full bg-slate-800 border border-slate-700 p-4 rounded-xl mb-4 outline-none focus:border-blue-500 text-white">
+        <button onclick="generate()" id="btn" class="w-full bg-blue-600 py-4 rounded-xl font-bold hover:bg-blue-700 transition">Generate Post</button>
+        
+        <div id="loading" class="hidden text-center mt-4 text-blue-400 animate-pulse">AI is thinking...</div>
+        
+        <div id="result" class="mt-8 text-slate-300 whitespace-pre-wrap text-sm leading-relaxed max-h-64 overflow-y-auto"></div>
+    </div>
+
+    <script>
+      async function generate() {
+            const topic = document.getElementById('topic').value;
+            const btn = document.getElementById('btn');
+            const resDiv = document.getElementById('result');
+            const loadDiv = document.getElementById('loading');
+
+            if(!topic) return alert('Enter a topic!');
+
+            btn.disabled = true;
+            loadDiv.classList.remove('hidden');
+            resDiv.innerHTML = '';
+
+            try {
+                const response = await fetch('/api/generate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ topic })
+                });
+                const data = await response.json();
+                resDiv.innerHTML = data.content;
+            } catch (e) {
+                alert('Error connecting to API. Make sure Render is finished deploying!');
+            } finally {
+                btn.disabled = false;
+                loadDiv.classList.add('hidden');
+            }
+      }
+    </script>
+</body>
+</html>
