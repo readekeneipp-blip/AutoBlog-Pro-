@@ -1,0 +1,32 @@
+services:
+  # Backend service
+  - type: web
+    name: autoblog-pro-backend
+    env: node
+    plan: free
+    buildCommand: npm install && cd server && npm install
+    startCommand: node server/index.js
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false # Set in Render Dashboard
+      - key: STRIPE_SECRET_KEY
+        sync: false # Set in Render Dashboard
+      - key: JWT_SECRET
+        sync: false # Set in Render Dashboard
+      - key: PORT
+        value: 5001
+      - key: DATA_DIR
+        value: /opt/render/project/src/server/data
+      - key: FRONTEND_URL
+        sync: false # Set this to your Vercel URL later
+
+  # Frontend service (Alternative to Vercel)
+  - type: web
+    name: autoblog-pro-frontend
+    env: static
+    plan: free
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_BASE
+        sync: false # Set this to your Render Backend URL + /api
