@@ -18,7 +18,7 @@ import Sidebar from './components/Sidebar';
 import PostEditor from './components/PostEditor';
 import Analytics from './components/Analytics';
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:5001/api';
+const API_BASE = import.meta.env.VITE_API_BASE || 'https://autoblog-pro-backend.onrender.com/api';
 
 // --- Auth Utilities ---
 const getAuthToken = () => localStorage.getItem('token');
