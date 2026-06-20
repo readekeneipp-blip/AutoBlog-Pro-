@@ -28,7 +28,9 @@
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-router-dom": "^7.17.0",
-    "stripe": "^22.2.0"
+    "render-cli": "^0.3.2",
+    "stripe": "^22.2.0",
+    "vercel": "^54.14.2"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
