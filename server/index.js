@@ -17,7 +17,7 @@ app.use((req, res, next) => {
   console.log(`${req.method} ${req.path}`);
   next();
 });
-const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
+const FRONTEND_URL = process.env.FRONTEND_URL || 'https://autoblog-pro-three.vercel.app';
 app.use(cors({
   origin: FRONTEND_URL,
   credentials: true
@@ -35,8 +35,27 @@ const stripe = process.env.STRIPE_SECRET_KEY ? Stripe(process.env.STRIPE_SECRET_
 
 // --- DB Helpers ---
 const getData = (file) => {
-  if (!fs.existsSync(file)) fs.writeFileSync(file, JSON.stringify([]));
-  return JSON.parse(fs.readFileSync(file));
+  try {
+    if (!fs.existsSync(file)) {
+      fs.writeFileSync(file, JSON.stringify([]));
+      return [];
+    }
+    const content = fs.readFileSync(file, 'utf8');
+    if (!content || content.trim() === '') {
+      console.warn(`File ${file} is empty, resetting to []`);
+      fs.writeFileSync(file, JSON.stringify([]));
+      return [];
+    }
+    return JSON.parse(content);
+  } catch (err) {
+    console.error(`Error reading ${file}:`, err.message);
+    if (err instanceof SyntaxError) {
+      console.warn(`JSON syntax error in ${file}, resetting to []`);
+      fs.writeFileSync(file, JSON.stringify([]));
+      return [];
+    }
+    throw err;
+  }
 };
 const saveData = (file, data) => fs.writeFileSync(file, JSON.stringify(data, null, 2));
 
