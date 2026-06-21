@@ -64,7 +64,8 @@ app.post('/api/auth/signup', async (req, res) => {
     if (users.find(u => u.email === email)) return res.status(400).json({ error: 'Exists' });
 
     console.log("Hashing password...");
-    const hashedPassword = bcrypt.hashSync(password, 1); 
+    // Using 4 rounds as a safe middle ground for Render free tier
+    const hashedPassword = bcrypt.hashSync(password, 4); 
     console.log("Password hashed");
 
     const newUser = { id: Date.now(), email, password: hashedPassword, name, cms: { wordpress: null }, subscription: 'free' };
@@ -80,15 +81,6 @@ app.post('/api/auth/signup', async (req, res) => {
     console.error("Signup error:", err);
     res.status(500).json({ error: err.message });
   }
-});
-
-  console.log("Hashing password for", email); const hashedPassword = bcrypt.hashSync(password, 4); console.log("Password hashed");
-  const newUser = { id: Date.now(), email, password: hashedPassword, name, cms: { wordpress: null }, subscription: 'free' };
-  users.push(newUser);
-  console.log("Saving users to", USERS_FILE); try { saveData(USERS_FILE, users); console.log("Users saved"); } catch (e) { console.error("Save failed", e.message); throw e; }
-
-  const token = jwt.sign({ id: newUser.id, email: newUser.email }, JWT_SECRET);
-  res.json({ token, user: { id: newUser.id, email, name, subscription: 'free' } });
 });
 
 app.post('/api/auth/login', async (req, res) => {
