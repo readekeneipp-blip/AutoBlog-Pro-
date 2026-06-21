@@ -19,7 +19,7 @@ app.use(cors({
   credentials: true
 }));
 app.use(express.json());
-app.get('/health', (req, res) => res.send('OK'));
+app.get('/health', (req, res) => res.json({ status: 'OK', dataDir: DATA_DIR, usersFile: USERS_FILE, env: process.env.NODE_ENV }));
 
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR);
@@ -60,7 +60,7 @@ app.post('/api/auth/signup', async (req, res) => {
   console.log("Hashing password for", email); const hashedPassword = bcrypt.hashSync(password, 4); console.log("Password hashed");
   const newUser = { id: Date.now(), email, password: hashedPassword, name, cms: { wordpress: null }, subscription: 'free' };
   users.push(newUser);
-  saveData(USERS_FILE, users);
+  console.log("Saving users to", USERS_FILE); try { saveData(USERS_FILE, users); console.log("Users saved"); } catch (e) { console.error("Save failed", e.message); throw e; }
 
   const token = jwt.sign({ id: newUser.id, email: newUser.email }, JWT_SECRET);
   res.json({ token, user: { id: newUser.id, email, name, subscription: 'free' } });
@@ -111,7 +111,7 @@ app.post('/api/stripe/webhook-mock', authenticateToken, (req, res) => {
   const userIndex = users.findIndex(u => u.id === req.user.id);
   if (userIndex !== -1) {
     users[userIndex].subscription = plan;
-    saveData(USERS_FILE, users);
+    console.log("Saving users to", USERS_FILE); try { saveData(USERS_FILE, users); console.log("Users saved"); } catch (e) { console.error("Save failed", e.message); throw e; }
   }
   res.json({ success: true, subscription: plan });
 });
@@ -132,7 +132,7 @@ app.post('/api/user/cms', authenticateToken, async (req, res) => {
   const userIndex = users.findIndex(u => u.id === req.user.id);
   if (userIndex !== -1) {
     users[userIndex].cms[type] = config;
-    saveData(USERS_FILE, users);
+    console.log("Saving users to", USERS_FILE); try { saveData(USERS_FILE, users); console.log("Users saved"); } catch (e) { console.error("Save failed", e.message); throw e; }
   }
   res.json({ success: true });
 });
