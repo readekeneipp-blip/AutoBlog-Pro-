@@ -13,6 +13,10 @@ const Stripe = require('stripe');
 dotenv.config();
 
 const app = express();
+app.use((req, res, next) => {
+  console.log(`${req.method} ${req.path}`);
+  next();
+});
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 app.use(cors({
   origin: FRONTEND_URL,
@@ -54,8 +58,29 @@ const authenticateToken = (req, res, next) => {
 // --- Auth Routes ---
 app.post('/api/auth/signup', async (req, res) => {
   const { email, password, name } = req.body;
-  const users = getData(USERS_FILE);
-  if (users.find(u => u.email === email)) return res.status(400).json({ error: 'Exists' });
+  try {
+    console.log("Signup attempt for:", email);
+    const users = getData(USERS_FILE);
+    if (users.find(u => u.email === email)) return res.status(400).json({ error: 'Exists' });
+
+    console.log("Hashing password...");
+    const hashedPassword = bcrypt.hashSync(password, 1); 
+    console.log("Password hashed");
+
+    const newUser = { id: Date.now(), email, password: hashedPassword, name, cms: { wordpress: null }, subscription: 'free' };
+    users.push(newUser);
+    
+    console.log("Saving to:", USERS_FILE);
+    saveData(USERS_FILE, users);
+    console.log("Saved successfully");
+
+    const token = jwt.sign({ id: newUser.id, email: newUser.email }, JWT_SECRET);
+    res.json({ token, user: { id: newUser.id, email, name, subscription: 'free' } });
+  } catch (err) {
+    console.error("Signup error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
 
   console.log("Hashing password for", email); const hashedPassword = bcrypt.hashSync(password, 4); console.log("Password hashed");
   const newUser = { id: Date.now(), email, password: hashedPassword, name, cms: { wordpress: null }, subscription: 'free' };
@@ -241,3 +266,8 @@ cron.schedule('* * * * *', async () => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => console.log(`Backend live on port ${PORT}. Env: ${process.env.NODE_ENV}`));
+
+app.use((err, req, res, next) => {
+  console.error("Global error:", err);
+  res.status(500).send("Internal Server Error");
+});
