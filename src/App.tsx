@@ -173,12 +173,20 @@ const Dashboard = () => {
   const [ghostConfig, setGhostConfig] = useState({ url: '', adminKey: '' });
   const [webflowConfig, setWebflowConfig] = useState({ accessToken: '', collectionId: '', contentField: 'post-body' });
 
-  const saveCMS = async (type: string, config: any) => {
+  const handleUpgrade = async (plan: string) => {
+    if (plan === 'scale') {
+      window.location.href = 'mailto:sales@autoblogpro.ai';
+      return;
+    }
     try {
       const token = getAuthToken();
-      await axios.post(`${API_BASE}/user/cms`, { type, config }, { headers: { Authorization: `Bearer ${token}` } });
-      alert(`${type.toUpperCase()} Settings Saved`);
-    } catch (err) { alert('Failed to save settings'); }
+      const res = await axios.post(`${API_BASE}/stripe/create-checkout`, { plan }, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.data.url) {
+        window.location.href = res.data.url;
+      }
+    } catch (err) {
+      alert('Failed to start checkout. Please try again.');
+    }
   };
 
   return (
@@ -369,7 +377,7 @@ const Dashboard = () => {
           )}
 
           {activeTab === 'billing' && (
-            <Pricing currentPlan={user.subscription} />
+            <Pricing currentPlan={user.subscription} onUpgrade={handleUpgrade} />
           )}
 
           {activeTab === 'settings' && (
@@ -428,15 +436,18 @@ const Dashboard = () => {
 };
 
 // --- App ---
-const Landing = () => (
-  <div className="bg-slate-950 min-h-screen">
-    <Navbar />
-    <Hero />
-    <Features />
-    <Pricing />
-    <Footer />
-  </div>
-);
+const Landing = () => {
+  const navigate = useNavigate();
+  return (
+    <div className="bg-slate-950 min-h-screen">
+      <Navbar />
+      <Hero />
+      <Features />
+      <Pricing onUpgrade={() => navigate('/signup')} />
+      <Footer />
+    </div>
+  );
+};
 
 export function App() {
   return (
