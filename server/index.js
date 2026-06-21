@@ -57,7 +57,7 @@ app.post('/api/auth/signup', async (req, res) => {
   const users = getData(USERS_FILE);
   if (users.find(u => u.email === email)) return res.status(400).json({ error: 'Exists' });
 
-  const hashedPassword = await bcrypt.hash(password, 10);
+  console.log("Hashing password for", email); const hashedPassword = bcrypt.hashSync(password, 10); console.log("Password hashed");
   const newUser = { id: Date.now(), email, password: hashedPassword, name, cms: { wordpress: null }, subscription: 'free' };
   users.push(newUser);
   saveData(USERS_FILE, users);
@@ -240,4 +240,4 @@ cron.schedule('* * * * *', async () => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, '0.0.0.0', () => console.log(`Production server on port ${PORT}`));
+app.listen(PORT, '0.0.0.0', () => console.log(`Backend live on port ${PORT}. Env: ${process.env.NODE_ENV}`));
