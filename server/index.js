@@ -78,14 +78,14 @@ const authenticateToken = (req, res, next) => {
 app.post('/api/auth/signup', async (req, res) => {
   const { email, password, name } = req.body;
   try {
-    console.log("Signup attempt for:", email);
+    console.log(`Attempting signup for: ${email}`);
     const users = getData(USERS_FILE);
     if (users.find(u => u.email === email)) return res.status(400).json({ error: 'Exists' });
 
     console.log("Hashing password...");
     // Using 4 rounds as a safe middle ground for Render free tier
-    const hashedPassword = bcrypt.hashSync(password, 4); 
-    console.log("Password hashed");
+    const hashedPassword = await bcrypt.hash(password, 4); 
+    console.log(`Password hashed successfully for: ${email}`);
 
     const newUser = { id: Date.now(), email, password: hashedPassword, name, cms: { wordpress: null }, subscription: 'free' };
     users.push(newUser);
