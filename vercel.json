@@ -12,7 +12,7 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "https://autoblog-pro-backend.onrender.com/api/$1"
+      "destination": "https://autoblog-pro.onrender.com/api/$1"
     },
     {
       "source": "/(.*)",
