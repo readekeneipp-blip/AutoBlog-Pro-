@@ -18,7 +18,7 @@ services:
       - key: DATA_DIR
         value: /opt/render/project/src/server/data
       - key: FRONTEND_URL
-        value: https://autoblog-pro.vercel.app
+        value: https://autoblog-pro-three.vercel.app
 
   # Frontend service (Alternative to Vercel)
   - type: web
