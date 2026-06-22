@@ -441,23 +441,32 @@ const ServerStatus = () => {
   const [isAwake, setIsAwake] = useState(false);
   
   useEffect(() => {
+    let isMounted = true;
     let timeout = setTimeout(() => {
-      if (!isAwake) setIsWaking(true);
+      if (isMounted && !isAwake) setIsWaking(true);
     }, 2000);
 
     const checkServer = async () => {
       try {
         await axios.get(`${API_BASE.replace('/api', '')}/health`);
-        setIsAwake(true);
-        setIsWaking(false);
+        if (isMounted) {
+          setIsAwake(true);
+          setIsWaking(false);
+        }
       } catch (e) {
-        setIsWaking(true);
-        // Retry every 5 seconds until awake
-        setTimeout(checkServer, 5000);
+        if (isMounted) {
+          setIsWaking(true);
+          setTimeout(checkServer, 5000);
+        }
       }
     };
-    checkServer();
-    return () => clearTimeout(timeout);
+
+    if (!isAwake) checkServer();
+    
+    return () => {
+      isMounted = false;
+      clearTimeout(timeout);
+    };
   }, [isAwake]);
 
   if (!isWaking) return null;

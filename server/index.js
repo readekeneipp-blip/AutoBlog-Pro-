@@ -9,6 +9,7 @@ const path = require('path');
 const cron = require('node-cron');
 const axios = require('axios');
 const Stripe = require('stripe');
+const db = require('./db');
 
 dotenv.config();
 
@@ -23,67 +24,32 @@ app.use(cors({
   credentials: true
 }));
 app.use(express.json());
-const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
-if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR);
 
-const USERS_FILE = path.join(DATA_DIR, 'users.json');
-const SCHEDULES_FILE = path.join(DATA_DIR, 'schedules.json');
 const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-key';
 const stripe = process.env.STRIPE_SECRET_KEY ? Stripe(process.env.STRIPE_SECRET_KEY) : null;
 
 app.get('/health', (req, res) => {
-  const usersSize = fs.existsSync(USERS_FILE) ? fs.statSync(USERS_FILE).size : -1;
   res.json({ 
     status: 'OK', 
-    dataDir: DATA_DIR, 
-    usersFile: USERS_FILE, 
-    usersSize,
     env: process.env.NODE_ENV,
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    db: 'postgres'
   });
 });
 
-app.get('/api/diag', (req, res) => {
+app.get('/api/diag', async (req, res) => {
   try {
-    const users = getData(USERS_FILE);
-    const schedules = getData(SCHEDULES_FILE);
+    const usersCount = await db.query('SELECT COUNT(*) FROM users');
+    const schedulesCount = await db.query('SELECT COUNT(*) FROM schedules');
     res.json({
-      usersCount: users.length,
-      schedulesCount: schedules.length,
-      usersFileExists: fs.existsSync(USERS_FILE),
-      usersFileSize: fs.existsSync(USERS_FILE) ? fs.statSync(USERS_FILE).size : 0,
+      usersCount: parseInt(usersCount.rows[0].count),
+      schedulesCount: parseInt(schedulesCount.rows[0].count),
       memory: process.memoryUsage()
     });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
-
-// --- DB Helpers ---
-const getData = (file) => {
-  try {
-    if (!fs.existsSync(file)) {
-      fs.writeFileSync(file, JSON.stringify([]));
-      return [];
-    }
-    const content = fs.readFileSync(file, 'utf8');
-    if (!content || content.trim() === '') {
-      console.warn(`File ${file} is empty, resetting to []`);
-      fs.writeFileSync(file, JSON.stringify([]));
-      return [];
-    }
-    return JSON.parse(content);
-  } catch (err) {
-    console.error(`Error reading ${file}:`, err.message);
-    if (err instanceof SyntaxError) {
-      console.warn(`JSON syntax error in ${file}, resetting to []`);
-      fs.writeFileSync(file, JSON.stringify([]));
-      return [];
-    }
-    throw err;
-  }
-};
-const saveData = (file, data) => fs.writeFileSync(file, JSON.stringify(data, null, 2));
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
@@ -105,23 +71,22 @@ app.post('/api/auth/signup', async (req, res) => {
   const { email, password, name } = req.body;
   try {
     console.log(`Attempting signup for: ${email}`);
-    const users = getData(USERS_FILE);
-    if (users.find(u => u.email === email)) return res.status(400).json({ error: 'Exists' });
+    const existing = await db.query('SELECT * FROM users WHERE email = $1', [email]);
+    if (existing.rows.length > 0) return res.status(400).json({ error: 'Exists' });
 
     console.log("Hashing password...");
-    // Using 4 rounds as a safe middle ground for Render free tier
     const hashedPassword = await bcrypt.hash(password, 4); 
-    console.log(`Password hashed successfully for: ${email}`);
 
-    const newUser = { id: Date.now(), email, password: hashedPassword, name, cms: { wordpress: null }, subscription: 'free' };
-    users.push(newUser);
+    const id = Date.now();
+    const newUser = await db.query(
+      'INSERT INTO users (id, email, password, name) VALUES ($1, $2, $3, $4) RETURNING id, email, name, subscription',
+      [id, email, hashedPassword, name]
+    );
     
-    console.log("Saving to:", USERS_FILE);
-    saveData(USERS_FILE, users);
-    console.log("Saved successfully");
+    console.log("Saved to database");
 
-    const token = jwt.sign({ id: newUser.id, email: newUser.email }, JWT_SECRET);
-    res.json({ token, user: { id: newUser.id, email, name, subscription: 'free' } });
+    const token = jwt.sign({ id: newUser.rows[0].id, email: newUser.rows[0].email }, JWT_SECRET);
+    res.json({ token, user: newUser.rows[0] });
   } catch (err) {
     console.error("Signup error:", err);
     res.status(500).json({ error: err.message });
@@ -130,12 +95,16 @@ app.post('/api/auth/signup', async (req, res) => {
 
 app.post('/api/auth/login', async (req, res) => {
   const { email, password } = req.body;
-  const users = getData(USERS_FILE);
-  const user = users.find(u => u.email === email);
-  if (!user || !(await bcrypt.compare(password, user.password))) return res.status(400).json({ error: 'Invalid' });
+  try {
+    const result = await db.query('SELECT * FROM users WHERE email = $1', [email]);
+    const user = result.rows[0];
+    if (!user || !(await bcrypt.compare(password, user.password))) return res.status(400).json({ error: 'Invalid' });
 
-  const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET);
-  res.json({ token, user: { id: user.id, email, name: user.name, cms: user.cms, subscription: user.subscription } });
+    const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET);
+    res.json({ token, user: { id: user.id, email: user.email, name: user.name, cms: user.cms, subscription: user.subscription } });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // --- Stripe Routes ---
@@ -167,15 +136,14 @@ app.post('/api/stripe/create-checkout', authenticateToken, async (req, res) => {
   }
 });
 
-app.post('/api/stripe/webhook-mock', authenticateToken, (req, res) => {
+app.post('/api/stripe/webhook-mock', authenticateToken, async (req, res) => {
   const { plan } = req.body;
-  const users = getData(USERS_FILE);
-  const userIndex = users.findIndex(u => u.id === req.user.id);
-  if (userIndex !== -1) {
-    users[userIndex].subscription = plan;
-    console.log("Saving users to", USERS_FILE); try { saveData(USERS_FILE, users); console.log("Users saved"); } catch (e) { console.error("Save failed", e.message); throw e; }
+  try {
+    await db.query('UPDATE users SET subscription = $1 WHERE id = $2', [plan, req.user.id]);
+    res.json({ success: true, subscription: plan });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
   }
-  res.json({ success: true, subscription: plan });
 });
 
 // --- AI & Content ---
@@ -190,26 +158,41 @@ app.post('/api/generate', authenticateToken, async (req, res) => {
 
 app.post('/api/user/cms', authenticateToken, async (req, res) => {
   const { type, config } = req.body;
-  const users = getData(USERS_FILE);
-  const userIndex = users.findIndex(u => u.id === req.user.id);
-  if (userIndex !== -1) {
-    users[userIndex].cms[type] = config;
-    console.log("Saving users to", USERS_FILE); try { saveData(USERS_FILE, users); console.log("Users saved"); } catch (e) { console.error("Save failed", e.message); throw e; }
+  try {
+    const userResult = await db.query('SELECT cms FROM users WHERE id = $1', [req.user.id]);
+    if (userResult.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+    
+    let currentCms = userResult.rows[0].cms || {};
+    currentCms[type] = config;
+    
+    await db.query('UPDATE users SET cms = $1 WHERE id = $2', [currentCms, req.user.id]);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
   }
-  res.json({ success: true });
 });
 
-app.post('/api/schedule', authenticateToken, (req, res) => {
+app.post('/api/schedule', authenticateToken, async (req, res) => {
   const { title, content, scheduledTime, type } = req.body;
-  const schedules = getData(SCHEDULES_FILE);
-  schedules.push({ id: Date.now(), userId: req.user.id, title, content, scheduledTime, type, status: 'pending' });
-  saveData(SCHEDULES_FILE, schedules);
-  res.json({ success: true });
+  try {
+    const id = Date.now();
+    await db.query(
+      'INSERT INTO schedules (id, user_id, title, content, scheduled_time, type, status) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+      [id, req.user.id, title, content, scheduledTime, type, 'pending']
+    );
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
-app.get('/api/schedules', authenticateToken, (req, res) => {
-  const schedules = getData(SCHEDULES_FILE);
-  res.json(schedules.filter(s => s.userId === req.user.id));
+app.get('/api/schedules', authenticateToken, async (req, res) => {
+  try {
+    const result = await db.query('SELECT * FROM schedules WHERE user_id = $1 ORDER BY scheduled_time DESC', [req.user.id]);
+    res.json(result.rows);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // --- Static Frontend (Production) ---
@@ -270,12 +253,14 @@ const publishToWebflow = async (config, title, content) => {
 
 // Cron for publishing schedules
 cron.schedule('* * * * *', async () => {
-  const schedules = getData(SCHEDULES_FILE);
-  const users = getData(USERS_FILE);
-  const now = new Date();
-  for (const s of schedules) {
-    if (s.status === 'pending' && new Date(s.scheduledTime) <= now) {
-      const user = users.find(u => u.id === s.userId);
+  try {
+    const now = new Date();
+    const schedules = await db.query('SELECT * FROM schedules WHERE status = \'pending\' AND scheduled_time <= $1', [now]);
+    
+    for (const s of schedules.rows) {
+      const userResult = await db.query('SELECT * FROM users WHERE id = $1', [s.user_id]);
+      const user = userResult.rows[0];
+      
       if (user && user.cms) {
         try {
           const type = s.type || 'wordpress';
@@ -284,24 +269,29 @@ cron.schedule('* * * * *', async () => {
 
           if (config.url === 'http://mock-wordpress.com' || config.url === 'mock') {
             console.log(`Mocking ${type} publish success for E2E verification`);
-            s.status = 'published';
+            await db.query('UPDATE schedules SET status = \'published\' WHERE id = $1', [s.id]);
           } else if (type === 'wordpress') {
             const auth = Buffer.from(`${config.username}:${config.password}`).toString('base64');
             await axios.post(`${config.url}/wp-json/wp/v2/posts`, { title: s.title, content: s.content, status: 'publish' }, { headers: { 'Authorization': `Basic ${auth}` } });
+            await db.query('UPDATE schedules SET status = \'published\' WHERE id = $1', [s.id]);
           } else if (type === 'ghost') {
             await publishToGhost(config, s.title, s.content);
+            await db.query('UPDATE schedules SET status = \'published\' WHERE id = $1', [s.id]);
           } else if (type === 'webflow') {
             await publishToWebflow(config, s.title, s.content);
+            await db.query('UPDATE schedules SET status = \'published\' WHERE id = $1', [s.id]);
           }
-          s.status = 'published';
         } catch (e) { 
           console.error(`Failed to publish to ${s.type}:`, e.message);
-          s.status = 'failed'; 
+          await db.query('UPDATE schedules SET status = \'failed\' WHERE id = $1', [s.id]);
         }
-      } else { s.status = 'failed'; }
+      } else { 
+        await db.query('UPDATE schedules SET status = \'failed\' WHERE id = $1', [s.id]);
+      }
     }
+  } catch (err) {
+    console.error('Cron error:', err);
   }
-  saveData(SCHEDULES_FILE, schedules);
 });
 
 // Keep-alive cron to prevent Render spin-down (every 10 minutes)
