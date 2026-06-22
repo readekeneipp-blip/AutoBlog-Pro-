@@ -181,11 +181,8 @@ app.post('/api/stripe/webhook-mock', authenticateToken, (req, res) => {
 // --- AI & Content ---
 app.post('/api/generate', authenticateToken, async (req, res) => {
   const { topic, niche, keywords } = req.body;
-  if (topic === 'MOCK_TEST_TOPIC') {
-    return res.json({ content: '# Mock Post\n\nThis is a mocked SEO post for verification purposes.' });
-  }
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-flash-latest' });
     const result = await model.generateContent(`Write a long SEO blog post about ${topic} in ${niche}. Keywords: ${keywords.join(', ')}. Markdown.`);
     res.json({ content: (await result.response).text() });
   } catch (e) { res.status(500).send('AI error'); }
