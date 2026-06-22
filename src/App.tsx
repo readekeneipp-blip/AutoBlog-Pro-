@@ -435,6 +435,47 @@ const Dashboard = () => {
   );
 };
 
+// --- Components ---
+const ServerStatus = () => {
+  const [isWaking, setIsWaking] = useState(false);
+  const [isAwake, setIsAwake] = useState(false);
+  
+  useEffect(() => {
+    let timeout = setTimeout(() => {
+      if (!isAwake) setIsWaking(true);
+    }, 2000);
+
+    const checkServer = async () => {
+      try {
+        await axios.get(`${API_BASE.replace('/api', '')}/health`);
+        setIsAwake(true);
+        setIsWaking(false);
+      } catch (e) {
+        setIsWaking(true);
+        // Retry every 5 seconds until awake
+        setTimeout(checkServer, 5000);
+      }
+    };
+    checkServer();
+    return () => clearTimeout(timeout);
+  }, [isAwake]);
+
+  if (!isWaking) return null;
+
+  return (
+    <div className="fixed bottom-6 right-6 bg-slate-900/90 backdrop-blur-xl border border-primary-500/30 p-5 rounded-3xl shadow-2xl z-[100] flex items-center gap-4 animate-in fade-in slide-in-from-bottom-8 duration-500">
+      <div className="relative">
+        <Loader2 className="w-6 h-6 text-primary-500 animate-spin" />
+        <div className="absolute inset-0 bg-primary-500/20 blur-xl animate-pulse rounded-full" />
+      </div>
+      <div>
+        <p className="text-xs text-white font-black uppercase tracking-[0.2em]">Engine Waking Up</p>
+        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mt-0.5">Cold start detected. Stand by...</p>
+      </div>
+    </div>
+  );
+};
+
 // --- App ---
 const Landing = () => {
   const navigate = useNavigate();
@@ -452,6 +493,7 @@ const Landing = () => {
 export function App() {
   return (
     <Router>
+      <ServerStatus />
       <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/login" element={<Login />} />

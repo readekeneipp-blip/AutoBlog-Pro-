@@ -268,7 +268,7 @@ const publishToWebflow = async (config, title, content) => {
   });
 };
 
-// Cron
+// Cron for publishing schedules
 cron.schedule('* * * * *', async () => {
   const schedules = getData(SCHEDULES_FILE);
   const users = getData(USERS_FILE);
@@ -302,6 +302,17 @@ cron.schedule('* * * * *', async () => {
     }
   }
   saveData(SCHEDULES_FILE, schedules);
+});
+
+// Keep-alive cron to prevent Render spin-down (every 10 minutes)
+cron.schedule('*/10 * * * *', async () => {
+  const SELF_URL = process.env.SELF_URL || 'https://autoblog-pro.onrender.com';
+  try {
+    console.log(`Keep-alive: Pinging ${SELF_URL}/health`);
+    await axios.get(`${SELF_URL}/health`);
+  } catch (e) {
+    console.error(`Keep-alive failed: ${e.message}`);
+  }
 });
 
 const PORT = process.env.PORT || 3000;
