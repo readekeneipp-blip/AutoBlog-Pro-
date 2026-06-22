@@ -23,8 +23,6 @@ app.use(cors({
   credentials: true
 }));
 app.use(express.json());
-app.get('/health', (req, res) => res.json({ status: 'OK', dataDir: DATA_DIR, usersFile: USERS_FILE, env: process.env.NODE_ENV }));
-
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR);
 
@@ -32,6 +30,34 @@ const USERS_FILE = path.join(DATA_DIR, 'users.json');
 const SCHEDULES_FILE = path.join(DATA_DIR, 'schedules.json');
 const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-key';
 const stripe = process.env.STRIPE_SECRET_KEY ? Stripe(process.env.STRIPE_SECRET_KEY) : null;
+
+app.get('/health', (req, res) => {
+  const usersSize = fs.existsSync(USERS_FILE) ? fs.statSync(USERS_FILE).size : -1;
+  res.json({ 
+    status: 'OK', 
+    dataDir: DATA_DIR, 
+    usersFile: USERS_FILE, 
+    usersSize,
+    env: process.env.NODE_ENV,
+    timestamp: new Date().toISOString()
+  });
+});
+
+app.get('/api/diag', (req, res) => {
+  try {
+    const users = getData(USERS_FILE);
+    const schedules = getData(SCHEDULES_FILE);
+    res.json({
+      usersCount: users.length,
+      schedulesCount: schedules.length,
+      usersFileExists: fs.existsSync(USERS_FILE),
+      usersFileSize: fs.existsSync(USERS_FILE) ? fs.statSync(USERS_FILE).size : 0,
+      memory: process.memoryUsage()
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
 // --- DB Helpers ---
 const getData = (file) => {
