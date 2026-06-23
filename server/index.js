@@ -149,11 +149,19 @@ app.post('/api/stripe/webhook-mock', authenticateToken, async (req, res) => {
 // --- AI & Content ---
 app.post('/api/generate', authenticateToken, async (req, res) => {
   const { topic, niche, keywords } = req.body;
+  console.log(`Generating content for ${topic} in ${niche}...`);
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-flash-latest' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-3.5-flash' });
+    console.log("Calling Gemini API...");
     const result = await model.generateContent(`Write a long SEO blog post about ${topic} in ${niche}. Keywords: ${keywords.join(', ')}. Markdown.`);
-    res.json({ content: (await result.response).text() });
-  } catch (e) { res.status(500).send('AI error'); }
+    console.log("AI Response received.");
+    const content = (await result.response).text();
+    console.log("Content extracted.");
+    res.json({ content });
+  } catch (e) { 
+    console.error("AI Error:", e);
+    res.status(500).send('AI error'); 
+  }
 });
 
 app.post('/api/user/cms', authenticateToken, async (req, res) => {
