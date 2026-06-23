@@ -173,6 +173,17 @@ const Dashboard = () => {
   const [ghostConfig, setGhostConfig] = useState({ url: '', adminKey: '' });
   const [webflowConfig, setWebflowConfig] = useState({ accessToken: '', collectionId: '', contentField: 'post-body' });
 
+  const saveCMS = async (type: string, config: any) => {
+    try {
+      const token = getAuthToken();
+      await axios.post(`${API_BASE}/user/cms`, { type, config }, { headers: { Authorization: `Bearer ${token}` } });
+      alert('CMS Saved!');
+      const updatedUser = { ...user, cms: { ...user.cms, [type]: config } };
+      setUser(updatedUser);
+      localStorage.setItem('user', JSON.stringify(updatedUser));
+    } catch (e) { alert('Failed to save'); }
+  };
+
   const handleUpgrade = async (plan: string) => {
     if (plan === 'scale') {
       window.location.href = 'mailto:sales@autoblogpro.ai';
