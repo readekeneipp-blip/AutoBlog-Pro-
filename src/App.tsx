@@ -109,6 +109,9 @@ const Dashboard = () => {
   const [content, setContent] = useState('');
   const [user, setUser] = useState(JSON.parse(localStorage.getItem('user') || '{}'));
   const [schedules, setSchedules] = useState([]);
+  const [sites, setSites] = useState<any[]>([]);
+  const [siteName, setSiteName] = useState('');
+  const [selectedSiteId, setSelectedSiteId] = useState('');
   const [scheduleTime, setScheduleTime] = useState('');
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -119,6 +122,17 @@ const Dashboard = () => {
       const token = getAuthToken();
       const res = await axios.get(`${API_BASE}/schedules`, { headers: { Authorization: `Bearer ${token}` } });
       setSchedules(res.data);
+    } catch (e) {}
+  };
+
+  const fetchSites = async () => {
+    try {
+      const token = getAuthToken();
+      const res = await axios.get(`${API_BASE}/user/sites`, { headers: { Authorization: `Bearer ${token}` } });
+      setSites(res.data);
+      if (res.data.length > 0 && !selectedSiteId) {
+        setSelectedSiteId(res.data[0].id);
+      }
     } catch (e) {}
   };
 
@@ -135,15 +149,8 @@ const Dashboard = () => {
         });
     }
     fetchSchedules();
+    fetchSites();
   }, [searchParams, navigate]);
-
-  useEffect(() => {
-    if (user.cms) {
-      if (user.cms.wordpress) setCmsConfig(user.cms.wordpress);
-      if (user.cms.ghost) setGhostConfig(user.cms.ghost);
-      if (user.cms.webflow) setWebflowConfig(user.cms.webflow);
-    }
-  }, [user]);
 
   const handleLogout = () => { clearAuth(); navigate('/login'); };
 
@@ -159,29 +166,45 @@ const Dashboard = () => {
 
   const handleSchedule = async () => {
     if (!scheduleTime) return alert('Select a time');
+    if (!selectedSiteId) return alert('Select a site first in Settings');
     try {
       const token = getAuthToken();
-      await axios.post(`${API_BASE}/schedule`, { title: topic, content, scheduledTime: scheduleTime, type: selectedCms }, { headers: { Authorization: `Bearer ${token}` } });
+      const selectedSite = sites.find((s:any) => s.id === selectedSiteId);
+      await axios.post(`${API_BASE}/schedule`, { 
+        title: topic, 
+        content, 
+        scheduledTime: scheduleTime, 
+        type: selectedSite?.type,
+        siteId: selectedSiteId
+      }, { headers: { Authorization: `Bearer ${token}` } });
       alert('Post Scheduled!');
       fetchSchedules();
       setActiveTab('schedules');
     } catch (e) { alert('Failed to schedule'); }
   };
 
-  const [selectedCms, setSelectedCms] = useState('wordpress');
   const [cmsConfig, setCmsConfig] = useState({ url: '', username: '', password: '' });
   const [ghostConfig, setGhostConfig] = useState({ url: '', adminKey: '' });
   const [webflowConfig, setWebflowConfig] = useState({ accessToken: '', collectionId: '', contentField: 'post-body' });
 
   const saveCMS = async (type: string, config: any) => {
+    if (!siteName) return alert('Please enter a name for this site');
     try {
       const token = getAuthToken();
-      await axios.post(`${API_BASE}/user/cms`, { type, config }, { headers: { Authorization: `Bearer ${token}` } });
-      alert('CMS Saved!');
-      const updatedUser = { ...user, cms: { ...user.cms, [type]: config } };
-      setUser(updatedUser);
-      localStorage.setItem('user', JSON.stringify(updatedUser));
+      await axios.post(`${API_BASE}/user/cms`, { type, config, name: siteName }, { headers: { Authorization: `Bearer ${token}` } });
+      alert('CMS Site Added!');
+      setSiteName('');
+      fetchSites();
     } catch (e) { alert('Failed to save'); }
+  };
+
+  const deleteSite = async (id: string) => {
+    if (!confirm('Are you sure?')) return;
+    try {
+      const token = getAuthToken();
+      await axios.delete(`${API_BASE}/user/sites/${id}`, { headers: { Authorization: `Bearer ${token}` } });
+      fetchSites();
+    } catch (e) { alert('Failed to delete'); }
   };
 
   const handleUpgrade = async (plan: string) => {
@@ -269,11 +292,12 @@ const Dashboard = () => {
                         <input value={niche} onChange={e=>setNiche(e.target.value)} placeholder="e.g. Technology" className="w-full p-4 rounded-2xl bg-slate-800/50 text-white outline-none border border-slate-700 focus:border-primary-500/50 focus:bg-slate-800 transition-all placeholder:text-slate-600 font-medium" />
                       </div>
                       <div>
-                        <label className="text-slate-500 text-[10px] font-black uppercase tracking-[0.2em] block mb-3 px-1">Target CMS</label>
-                        <select value={selectedCms} onChange={e=>setSelectedCms(e.target.value)} className="w-full p-4 rounded-2xl bg-slate-800/50 text-white outline-none border border-slate-700 focus:border-primary-500/50 focus:bg-slate-800 transition-all appearance-none cursor-pointer font-medium uppercase text-xs tracking-widest">
-                          <option value="wordpress">WordPress</option>
-                          <option value="ghost">Ghost</option>
-                          <option value="webflow">Webflow</option>
+                        <label className="text-slate-500 text-[10px] font-black uppercase tracking-[0.2em] block mb-3 px-1">Target Site</label>
+                        <select value={selectedSiteId} onChange={e=>setSelectedSiteId(e.target.value)} className="w-full p-4 rounded-2xl bg-slate-800/50 text-white outline-none border border-slate-700 focus:border-primary-500/50 focus:bg-slate-800 transition-all appearance-none cursor-pointer font-medium uppercase text-xs tracking-widest">
+                          {sites.length === 0 && <option value="">No sites connected</option>}
+                          {sites.map((s:any) => (
+                            <option key={s.id} value={s.id}>{s.name} ({s.type})</option>
+                          ))}
                         </select>
                       </div>
                     </div>
@@ -393,6 +417,33 @@ const Dashboard = () => {
 
           {activeTab === 'settings' && (
             <div className="max-w-4xl text-white space-y-10">
+              <div className="bg-slate-900 p-8 rounded-[2rem] border border-slate-800 shadow-xl space-y-6">
+                <h2 className="text-xl font-bold flex items-center gap-2">
+                  <Globe className="w-5 h-5 text-primary-400" />
+                  Connected Sites
+                </h2>
+                <div className="grid gap-4">
+                  {sites.length === 0 && <p className="text-slate-500 italic">No sites connected yet. Add one below.</p>}
+                  {sites.map((s:any) => (
+                    <div key={s.id} className="flex justify-between items-center p-4 bg-slate-800/50 rounded-xl border border-slate-700 hover:border-slate-600 transition-all">
+                      <div>
+                        <p className="font-bold text-white">{s.name}</p>
+                        <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest">{s.type} • {s.config.url || 'Webflow API'}</p>
+                      </div>
+                      <button onClick={() => deleteSite(s.id)} className="px-4 py-2 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded-lg text-xs font-bold transition-all uppercase tracking-widest">Remove</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="bg-primary-500/5 p-8 rounded-[2rem] border border-primary-500/20 space-y-4">
+                <h3 className="text-sm font-black uppercase tracking-widest text-primary-400">Add New Site</h3>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-500 uppercase mb-2 ml-1">Site Display Name</label>
+                  <input placeholder="e.g. My Authority Site" value={siteName} onChange={e=>setSiteName(e.target.value)} className="w-full p-4 rounded-xl border bg-slate-800/50 border-slate-700 text-white outline-none focus:border-primary-500/50 transition-all font-medium" />
+                </div>
+              </div>
+
               <div className="grid md:grid-cols-2 gap-8">
                 <div className="bg-slate-900 p-8 rounded-[2rem] border border-slate-800 shadow-xl space-y-6">
                   <div className="flex items-center gap-3 mb-2">
@@ -406,7 +457,7 @@ const Dashboard = () => {
                     <div><label className="block text-xs font-bold text-slate-500 uppercase mb-2 ml-1">Username</label><input value={cmsConfig.username} onChange={e=>setCmsConfig({...cmsConfig, username: e.target.value})} className="w-full p-4 rounded-xl border bg-slate-800/50 border-slate-700 text-white outline-none focus:border-primary-500/50 transition-all" /></div>
                     <div><label className="block text-xs font-bold text-slate-500 uppercase mb-2 ml-1">App Password</label><input type="password" value={cmsConfig.password} onChange={e=>setCmsConfig({...cmsConfig, password: e.target.value})} className="w-full p-4 rounded-xl border bg-slate-800/50 border-slate-700 text-white outline-none focus:border-primary-500/50 transition-all" /></div>
                   </div>
-                  <button onClick={()=>saveCMS('wordpress', cmsConfig)} className="w-full bg-primary-600 hover:bg-primary-500 text-white py-4 rounded-xl font-bold transition-all shadow-lg shadow-primary-500/20">Save Configuration</button>
+                  <button onClick={()=>saveCMS('wordpress', cmsConfig)} className="w-full bg-primary-600 hover:bg-primary-500 text-white py-4 rounded-xl font-bold transition-all shadow-lg shadow-primary-500/20">Add WordPress Site</button>
                 </div>
 
                 <div className="bg-slate-900 p-8 rounded-[2rem] border border-slate-800 shadow-xl space-y-6">
@@ -420,7 +471,7 @@ const Dashboard = () => {
                     <div><label className="block text-xs font-bold text-slate-500 uppercase mb-2 ml-1">Site URL</label><input placeholder="https://myghost.com" value={ghostConfig.url} onChange={e=>setGhostConfig({...ghostConfig, url: e.target.value})} className="w-full p-4 rounded-xl border bg-slate-800/50 border-slate-700 text-white outline-none focus:border-indigo-500/50 transition-all" /></div>
                     <div><label className="block text-xs font-bold text-slate-500 uppercase mb-2 ml-1">Admin API Key</label><input placeholder="id:secret" value={ghostConfig.adminKey} onChange={e=>setGhostConfig({...ghostConfig, adminKey: e.target.value})} className="w-full p-4 rounded-xl border bg-slate-800/50 border-slate-700 text-white outline-none focus:border-indigo-500/50 transition-all" /></div>
                   </div>
-                  <button onClick={()=>saveCMS('ghost', ghostConfig)} className="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-4 rounded-xl font-bold transition-all shadow-lg shadow-indigo-500/20">Save Configuration</button>
+                  <button onClick={()=>saveCMS('ghost', ghostConfig)} className="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-4 rounded-xl font-bold transition-all shadow-lg shadow-indigo-500/20">Add Ghost Site</button>
                 </div>
 
                 <div className="bg-slate-900 p-8 rounded-[2rem] border border-slate-800 shadow-xl space-y-6 md:col-span-2">
@@ -435,7 +486,7 @@ const Dashboard = () => {
                     <div><label className="block text-xs font-bold text-slate-500 uppercase mb-2 ml-1">Collection ID</label><input value={webflowConfig.collectionId} onChange={e=>setWebflowConfig({...webflowConfig, collectionId: e.target.value})} className="w-full p-4 rounded-xl border bg-slate-800/50 border-slate-700 text-white outline-none focus:border-blue-500/50 transition-all" /></div>
                     <div><label className="block text-xs font-bold text-slate-500 uppercase mb-2 ml-1">Content Field</label><input placeholder="post-body" value={webflowConfig.contentField} onChange={e=>setWebflowConfig({...webflowConfig, contentField: e.target.value})} className="w-full p-4 rounded-xl border bg-slate-800/50 border-slate-700 text-white outline-none focus:border-blue-500/50 transition-all" /></div>
                   </div>
-                  <button onClick={()=>saveCMS('webflow', webflowConfig)} className="w-full bg-blue-600 hover:bg-blue-500 text-white py-4 rounded-xl font-bold transition-all shadow-lg shadow-blue-500/20">Save Webflow Configuration</button>
+                  <button onClick={()=>saveCMS('webflow', webflowConfig)} className="w-full bg-blue-600 hover:bg-blue-500 text-white py-4 rounded-xl font-bold transition-all shadow-lg shadow-blue-500/20">Add Webflow Site</button>
                 </div>
               </div>
             </div>
@@ -523,4 +574,5 @@ export function App() {
     </Router>
   );
 }
+
 export default App;

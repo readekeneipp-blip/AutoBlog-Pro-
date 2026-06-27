@@ -165,15 +165,31 @@ app.post('/api/generate', authenticateToken, async (req, res) => {
 });
 
 app.post('/api/user/cms', authenticateToken, async (req, res) => {
-  const { type, config } = req.body;
+  const { type, config, name } = req.body;
   try {
-    const userResult = await db.query('SELECT cms FROM users WHERE id = $1', [req.user.id]);
-    if (userResult.rows.length === 0) return res.status(404).json({ error: 'User not found' });
-    
-    let currentCms = userResult.rows[0].cms || {};
-    currentCms[type] = config;
-    
-    await db.query('UPDATE users SET cms = $1 WHERE id = $2', [currentCms, req.user.id]);
+    const id = Date.now().toString(); // Temporary id or use UUID
+    await db.query(
+      'INSERT INTO sites (user_id, name, type, config) VALUES ($1, $2, $3, $4)',
+      [req.user.id, name || type, type, config]
+    );
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/user/sites', authenticateToken, async (req, res) => {
+  try {
+    const result = await db.query('SELECT * FROM sites WHERE user_id = $1', [req.user.id]);
+    res.json(result.rows);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete('/api/user/sites/:id', authenticateToken, async (req, res) => {
+  try {
+    await db.query('DELETE FROM sites WHERE id = $1 AND user_id = $2', [req.params.id, req.user.id]);
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -181,12 +197,12 @@ app.post('/api/user/cms', authenticateToken, async (req, res) => {
 });
 
 app.post('/api/schedule', authenticateToken, async (req, res) => {
-  const { title, content, scheduledTime, type } = req.body;
+  const { title, content, scheduledTime, type, siteId } = req.body;
   try {
     const id = Date.now();
     await db.query(
-      'INSERT INTO schedules (id, user_id, title, content, scheduled_time, type, status) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-      [id, req.user.id, title, content, scheduledTime, type, 'pending']
+      'INSERT INTO schedules (id, user_id, title, content, scheduled_time, type, status, site_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
+      [id, req.user.id, title, content, scheduledTime, type, 'pending', siteId]
     );
     res.json({ success: true });
   } catch (e) {
@@ -266,34 +282,47 @@ cron.schedule('* * * * *', async () => {
     const schedules = await db.query('SELECT * FROM schedules WHERE status = \'pending\' AND scheduled_time <= $1', [now]);
     
     for (const s of schedules.rows) {
-      const userResult = await db.query('SELECT * FROM users WHERE id = $1', [s.user_id]);
-      const user = userResult.rows[0];
-      
-      if (user && user.cms) {
-        try {
-          const type = s.type || 'wordpress';
-          const config = user.cms[type];
-          if (!config) throw new Error(`No config for ${type}`);
+      try {
+        let config;
+        let type = s.type;
 
-          if (config.url === 'http://mock-wordpress.com' || config.url === 'mock') {
-            console.log(`Mocking ${type} publish success for E2E verification`);
-            await db.query('UPDATE schedules SET status = \'published\' WHERE id = $1', [s.id]);
-          } else if (type === 'wordpress') {
-            const auth = Buffer.from(`${config.username}:${config.password}`).toString('base64');
-            await axios.post(`${config.url}/wp-json/wp/v2/posts`, { title: s.title, content: s.content, status: 'publish' }, { headers: { 'Authorization': `Basic ${auth}` } });
-            await db.query('UPDATE schedules SET status = \'published\' WHERE id = $1', [s.id]);
-          } else if (type === 'ghost') {
-            await publishToGhost(config, s.title, s.content);
-            await db.query('UPDATE schedules SET status = \'published\' WHERE id = $1', [s.id]);
-          } else if (type === 'webflow') {
-            await publishToWebflow(config, s.title, s.content);
-            await db.query('UPDATE schedules SET status = \'published\' WHERE id = $1', [s.id]);
+        if (s.site_id) {
+          const siteResult = await db.query('SELECT * FROM sites WHERE id = $1', [s.site_id]);
+          const site = siteResult.rows[0];
+          if (site) {
+            config = site.config;
+            type = site.type;
           }
-        } catch (e) { 
-          console.error(`Failed to publish to ${s.type}:`, e.message);
-          await db.query('UPDATE schedules SET status = \'failed\' WHERE id = $1', [s.id]);
         }
-      } else { 
+
+        // Fallback for legacy schedules or if site_id is missing
+        if (!config) {
+          const userResult = await db.query('SELECT * FROM users WHERE id = $1', [s.user_id]);
+          const user = userResult.rows[0];
+          if (user && user.cms) {
+            type = s.type || 'wordpress';
+            config = user.cms[type];
+          }
+        }
+
+        if (!config) throw new Error(`No config for schedule ${s.id}`);
+
+        if (config.url === 'http://mock-wordpress.com' || config.url === 'mock') {
+          console.log(`Mocking ${type} publish success for E2E verification`);
+          await db.query('UPDATE schedules SET status = \'published\' WHERE id = $1', [s.id]);
+        } else if (type === 'wordpress') {
+          const auth = Buffer.from(`${config.username}:${config.password}`).toString('base64');
+          await axios.post(`${config.url}/wp-json/wp/v2/posts`, { title: s.title, content: s.content, status: 'publish' }, { headers: { 'Authorization': `Basic ${auth}` } });
+          await db.query('UPDATE schedules SET status = \'published\' WHERE id = $1', [s.id]);
+        } else if (type === 'ghost') {
+          await publishToGhost(config, s.title, s.content);
+          await db.query('UPDATE schedules SET status = \'published\' WHERE id = $1', [s.id]);
+        } else if (type === 'webflow') {
+          await publishToWebflow(config, s.title, s.content);
+          await db.query('UPDATE schedules SET status = \'published\' WHERE id = $1', [s.id]);
+        }
+      } catch (e) { 
+        console.error(`Failed to publish schedule ${s.id}:`, e.message);
         await db.query('UPDATE schedules SET status = \'failed\' WHERE id = $1', [s.id]);
       }
     }
