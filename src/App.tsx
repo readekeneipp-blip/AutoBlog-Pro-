@@ -20,6 +20,13 @@ import Analytics from './components/Analytics';
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'https://autoblog-pro.onrender.com/api';
 
+const TIER_LIMITS = {
+  free: { sites: 0, articles: 0 },
+  starter: { sites: 1, articles: 10 },
+  growth: { sites: 5, articles: 50 },
+  scale: { sites: Infinity, articles: Infinity }
+};
+
 // --- Auth Utilities ---
 const getAuthToken = () => localStorage.getItem('token');
 const setAuthToken = (token: string) => localStorage.setItem('token', token);
@@ -117,6 +124,16 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
+  const currentLimits = TIER_LIMITS[(user.subscription as keyof typeof TIER_LIMITS) || "free"] || TIER_LIMITS.free;
+  const canAddSite = sites.length < currentLimits.sites;
+  const monthlyArticles = schedules.filter((s: any) => {
+    const startOfMonth = new Date();
+    startOfMonth.setDate(1);
+    startOfMonth.setHours(0, 0, 0, 0);
+    return new Date(s.scheduledTime) >= startOfMonth;
+  }).length;
+  const canGenerate = monthlyArticles < currentLimits.articles;
+
   const fetchSchedules = async () => {
     try {
       const token = getAuthToken();
@@ -155,6 +172,7 @@ const Dashboard = () => {
   const handleLogout = () => { clearAuth(); navigate('/login'); };
 
   const handleGenerate = async () => {
+    if (!canGenerate) return alert(`Monthly article limit reached for ${user.subscription} plan (${currentLimits.articles} articles). Please upgrade.`);
     setLoading(true);
     try {
       const token = getAuthToken();
@@ -188,6 +206,7 @@ const Dashboard = () => {
   const [webflowConfig, setWebflowConfig] = useState({ accessToken: '', collectionId: '', contentField: 'post-body' });
 
   const saveCMS = async (type: string, config: any) => {
+    if (!canAddSite) return alert(`Site limit reached for ${user.subscription} plan (${currentLimits.sites} sites). Please upgrade.`);
     if (!siteName) return alert('Please enter a name for this site');
     try {
       const token = getAuthToken();
@@ -309,12 +328,13 @@ const Dashboard = () => {
 
                   <button 
                     onClick={handleGenerate} 
-                    disabled={loading}
+                    disabled={loading || !canGenerate}
                     className="w-full bg-primary-600 hover:bg-primary-500 disabled:opacity-50 text-white py-6 rounded-2xl font-black uppercase tracking-widest transition-all shadow-xl shadow-primary-500/20 flex items-center justify-center gap-3 group/btn text-sm"
                   >
                     {loading ? <Loader2 className="animate-spin w-5 h-5"/> : <Zap className="w-5 h-5 group-hover/btn:scale-125 transition-transform fill-white/20"/>} 
-                    {loading ? 'AI Engine Running...' : 'Generate Authority Post'}
+                    {loading ? 'AI Engine Running...' : !canGenerate ? 'Limit Reached' : 'Generate Authority Post'}
                   </button>
+                  {!canGenerate && <p className="text-[10px] text-center text-primary-400 font-bold uppercase tracking-wider">Article limit reached for {user.subscription} plan</p>}
                 </div>
                 
                 <div className="bg-gradient-to-br from-indigo-600 to-primary-700 p-10 rounded-[2.5rem] text-white shadow-2xl relative overflow-hidden shadow-primary-900/20 group">
@@ -419,6 +439,46 @@ const Dashboard = () => {
             <div className="max-w-4xl text-white space-y-10">
               <div className="bg-slate-900 p-8 rounded-[2rem] border border-slate-800 shadow-xl space-y-6">
                 <h2 className="text-xl font-bold flex items-center gap-2">
+                  <Zap className="w-5 h-5 text-primary-400" />
+                  Plan Usage & Limits
+                </h2>
+                <div className="grid md:grid-cols-2 gap-6">
+                  <div className="p-6 bg-slate-800/50 rounded-2xl border border-slate-700">
+                    <p className="text-xs font-black uppercase tracking-widest text-slate-500 mb-2">Connected Sites</p>
+                    <div className="flex items-end gap-2">
+                      <span className="text-3xl font-black text-white">{sites.length}</span>
+                      <span className="text-slate-500 font-bold mb-1">/ {currentLimits.sites === Infinity ? '∞' : currentLimits.sites}</span>
+                    </div>
+                    <div className="w-full h-1.5 bg-slate-700 rounded-full mt-4 overflow-hidden">
+                      <div 
+                        className="h-full bg-primary-500 transition-all" 
+                        style={{ width: `${Math.min(100, (sites.length / (currentLimits.sites || 1)) * 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                  <div className="p-6 bg-slate-800/50 rounded-2xl border border-slate-700">
+                    <p className="text-xs font-black uppercase tracking-widest text-slate-500 mb-2">Monthly Articles</p>
+                    <div className="flex items-end gap-2">
+                      <span className="text-3xl font-black text-white">{monthlyArticles}</span>
+                      <span className="text-slate-500 font-bold mb-1">/ {currentLimits.articles === Infinity ? '∞' : currentLimits.articles}</span>
+                    </div>
+                    <div className="w-full h-1.5 bg-slate-700 rounded-full mt-4 overflow-hidden">
+                      <div 
+                        className="h-full bg-indigo-500 transition-all" 
+                        style={{ width: `${Math.min(100, (monthlyArticles / (currentLimits.articles || 1)) * 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+                {user.subscription === 'free' && (
+                  <div className="p-4 bg-primary-500/10 border border-primary-500/20 rounded-xl">
+                    <p className="text-sm text-primary-400 font-bold">You are on the Free plan. Upgrade to start adding sites and generating content.</p>
+                  </div>
+                )}
+              </div>
+
+              <div className="bg-slate-900 p-8 rounded-[2rem] border border-slate-800 shadow-xl space-y-6">
+                <h2 className="text-xl font-bold flex items-center gap-2">
                   <Globe className="w-5 h-5 text-primary-400" />
                   Connected Sites
                 </h2>
@@ -457,7 +517,7 @@ const Dashboard = () => {
                     <div><label className="block text-xs font-bold text-slate-500 uppercase mb-2 ml-1">Username</label><input value={cmsConfig.username} onChange={e=>setCmsConfig({...cmsConfig, username: e.target.value})} className="w-full p-4 rounded-xl border bg-slate-800/50 border-slate-700 text-white outline-none focus:border-primary-500/50 transition-all" /></div>
                     <div><label className="block text-xs font-bold text-slate-500 uppercase mb-2 ml-1">App Password</label><input type="password" value={cmsConfig.password} onChange={e=>setCmsConfig({...cmsConfig, password: e.target.value})} className="w-full p-4 rounded-xl border bg-slate-800/50 border-slate-700 text-white outline-none focus:border-primary-500/50 transition-all" /></div>
                   </div>
-                  <button onClick={()=>saveCMS('wordpress', cmsConfig)} className="w-full bg-primary-600 hover:bg-primary-500 text-white py-4 rounded-xl font-bold transition-all shadow-lg shadow-primary-500/20">Add WordPress Site</button>
+                  <button onClick={()=>saveCMS('wordpress', cmsConfig)} disabled={!canAddSite} className="w-full bg-primary-600 hover:bg-primary-500 disabled:opacity-50 text-white py-4 rounded-xl font-bold transition-all shadow-lg shadow-primary-500/20">Add WordPress Site</button>
                 </div>
 
                 <div className="bg-slate-900 p-8 rounded-[2rem] border border-slate-800 shadow-xl space-y-6">
@@ -471,7 +531,7 @@ const Dashboard = () => {
                     <div><label className="block text-xs font-bold text-slate-500 uppercase mb-2 ml-1">Site URL</label><input placeholder="https://myghost.com" value={ghostConfig.url} onChange={e=>setGhostConfig({...ghostConfig, url: e.target.value})} className="w-full p-4 rounded-xl border bg-slate-800/50 border-slate-700 text-white outline-none focus:border-indigo-500/50 transition-all" /></div>
                     <div><label className="block text-xs font-bold text-slate-500 uppercase mb-2 ml-1">Admin API Key</label><input placeholder="id:secret" value={ghostConfig.adminKey} onChange={e=>setGhostConfig({...ghostConfig, adminKey: e.target.value})} className="w-full p-4 rounded-xl border bg-slate-800/50 border-slate-700 text-white outline-none focus:border-indigo-500/50 transition-all" /></div>
                   </div>
-                  <button onClick={()=>saveCMS('ghost', ghostConfig)} className="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-4 rounded-xl font-bold transition-all shadow-lg shadow-indigo-500/20">Add Ghost Site</button>
+                  <button onClick={()=>saveCMS('ghost', ghostConfig)} disabled={!canAddSite} className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white py-4 rounded-xl font-bold transition-all shadow-lg shadow-indigo-500/20">Add Ghost Site</button>
                 </div>
 
                 <div className="bg-slate-900 p-8 rounded-[2rem] border border-slate-800 shadow-xl space-y-6 md:col-span-2">
@@ -486,7 +546,7 @@ const Dashboard = () => {
                     <div><label className="block text-xs font-bold text-slate-500 uppercase mb-2 ml-1">Collection ID</label><input value={webflowConfig.collectionId} onChange={e=>setWebflowConfig({...webflowConfig, collectionId: e.target.value})} className="w-full p-4 rounded-xl border bg-slate-800/50 border-slate-700 text-white outline-none focus:border-blue-500/50 transition-all" /></div>
                     <div><label className="block text-xs font-bold text-slate-500 uppercase mb-2 ml-1">Content Field</label><input placeholder="post-body" value={webflowConfig.contentField} onChange={e=>setWebflowConfig({...webflowConfig, contentField: e.target.value})} className="w-full p-4 rounded-xl border bg-slate-800/50 border-slate-700 text-white outline-none focus:border-blue-500/50 transition-all" /></div>
                   </div>
-                  <button onClick={()=>saveCMS('webflow', webflowConfig)} className="w-full bg-blue-600 hover:bg-blue-500 text-white py-4 rounded-xl font-bold transition-all shadow-lg shadow-blue-500/20">Add Webflow Site</button>
+                  <button onClick={()=>saveCMS('webflow', webflowConfig)} disabled={!canAddSite} className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white py-4 rounded-xl font-bold transition-all shadow-lg shadow-blue-500/20">Add Webflow Site</button>
                 </div>
               </div>
             </div>
@@ -540,8 +600,7 @@ const ServerStatus = () => {
         <div className="absolute inset-0 bg-primary-500/20 blur-xl animate-pulse rounded-full" />
       </div>
       <div>
-        <p className="text-xs text-white font-black uppercase tracking-[0.2em]">Engine Waking Up</p>
-        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mt-0.5">Cold start detected. Stand by...</p>
+        <p className="text-xs text-white font-black uppercase tracking-[0.2em]">Engine Waking Up</p>        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mt-0.5">Cold start detected. Stand by...</p>
       </div>
     </div>
   );
