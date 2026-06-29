@@ -183,6 +183,9 @@ const Dashboard = () => {
   };
 
   const handleSchedule = async () => {
+    if (user.subscription !== 'growth' && user.subscription !== 'scale') {
+      return alert('Scheduling is only available on Growth and Scale plans. Please upgrade.');
+    }
     if (!scheduleTime) return alert('Select a time');
     if (!selectedSiteId) return alert('Select a site first in Settings');
     try {
@@ -349,7 +352,7 @@ const Dashboard = () => {
               </div>
               
               <div className="lg:col-span-3 h-full min-h-[700px] flex flex-col">
-                <PostEditor 
+                <PostEditor
                   content={content}
                   setContent={setContent}
                   topic={topic}
@@ -357,6 +360,8 @@ const Dashboard = () => {
                   scheduleTime={scheduleTime}
                   setScheduleTime={setScheduleTime}
                   handleSchedule={handleSchedule}
+                  subscription={user.subscription || 'free'}
+                  setActiveTab={setActiveTab}
                 />
               </div>
             </div>

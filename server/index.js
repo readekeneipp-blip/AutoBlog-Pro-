@@ -235,6 +235,13 @@ app.delete('/api/user/sites/:id', authenticateToken, async (req, res) => {
 app.post('/api/schedule', authenticateToken, async (req, res) => {
   const { title, content, scheduledTime, type, siteId } = req.body;
   try {
+    const userResult = await db.query('SELECT subscription FROM users WHERE id = $1', [req.user.id]);
+    const subscription = userResult.rows[0]?.subscription || 'free';
+    
+    if (subscription !== 'growth' && subscription !== 'scale') {
+      return res.status(403).json({ error: 'Scheduling is only available on Growth and Scale plans. Please upgrade.' });
+    }
+
     const id = Date.now();
     await db.query(
       'INSERT INTO schedules (id, user_id, title, content, scheduled_time, type, status, site_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
