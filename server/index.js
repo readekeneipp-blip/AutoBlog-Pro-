@@ -30,6 +30,48 @@ app.use(cors({
   origin: FRONTEND_URL,
   credentials: true
 }));
+
+// Stripe Webhook needs raw body for signature verification
+app.post('/api/stripe/webhook', express.raw({type: 'application/json'}), async (req, res) => {
+  const sig = req.headers['stripe-signature'];
+  let event;
+
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+  if (webhookSecret && sig) {
+    try {
+      event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
+    } catch (err) {
+      console.error(`Webhook signature verification failed: ${err.message}`);
+      return res.status(400).send(`Webhook Error: ${err.message}`);
+    }
+  } else {
+    // Fallback for development without secret or signature
+    try {
+      event = JSON.parse(req.body.toString());
+    } catch (err) {
+      return res.status(400).send('Invalid payload');
+    }
+  }
+
+  if (event.type === 'checkout.session.completed') {
+    const session = event.data.object;
+    const plan = session.metadata?.plan;
+    const email = session.customer_email;
+
+    if (plan && email) {
+      console.log(`Stripe Webhook: Updating user ${email} to plan ${plan}`);
+      try {
+        await db.query('UPDATE users SET subscription = $1 WHERE email = $2', [plan, email]);
+      } catch (e) {
+        console.error('Database update failed in webhook:', e.message);
+      }
+    }
+  }
+
+  res.json({received: true});
+});
+
 app.use(express.json());
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-key';
@@ -136,6 +178,7 @@ app.post('/api/stripe/create-checkout', authenticateToken, async (req, res) => {
       success_url: `${origin}/dashboard?plan=${plan}`,
       cancel_url: `${origin}/dashboard?billing_cancel=true`,
       customer_email: req.user.email,
+      metadata: { plan },
     });
     res.json({ url: session.url });
   } catch (e) {
