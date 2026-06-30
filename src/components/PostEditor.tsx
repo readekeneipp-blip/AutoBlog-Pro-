@@ -1,4 +1,4 @@
-import { Calendar, Globe, FileText, CheckCircle2, Edit3 } from 'lucide-react';
+import { Calendar, Globe, FileText, CheckCircle2, Edit3, Lock } from 'lucide-react';
 import SEOAnalysis from './SEOAnalysis';
 import { useMemo } from 'react';
 
@@ -10,10 +10,15 @@ interface PostEditorProps {
   scheduleTime: string;
   setScheduleTime: (time: string) => void;
   handleSchedule: () => void;
+  subscription: string;
+  setActiveTab: (tab: string) => void;
 }
 
-const PostEditor = ({ content, setContent, topic, keywords, scheduleTime, setScheduleTime, handleSchedule }: PostEditorProps) => {
+const PostEditor = ({ content, setContent, topic, keywords, scheduleTime, setScheduleTime, handleSchedule, subscription, setActiveTab }: PostEditorProps) => {
   
+  const canSchedule = subscription === 'growth' || subscription === 'scale';
+  const canSeeSEO = subscription === 'scale';
+
   const seoData = useMemo(() => {
     if (!content) return { score: 0, readability: 'N/A', suggestions: [] };
 
@@ -95,12 +100,18 @@ const PostEditor = ({ content, setContent, topic, keywords, scheduleTime, setSch
         
         <div className="flex items-center gap-2">
            <button 
-            onClick={handleSchedule} 
+            onClick={() => {
+              if (!canSchedule) {
+                alert('Scheduling is only available on Growth and Scale plans. Please upgrade.');
+                return;
+              }
+              handleSchedule();
+            }} 
             disabled={!content} 
             className="bg-primary-600 hover:bg-primary-500 text-white px-6 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 disabled:opacity-50 transition-all shadow-lg shadow-primary-500/20"
           >
             <Globe className="w-4 h-4" /> 
-            Schedule & Publish
+            {canSchedule ? 'Schedule & Publish' : 'Upgrade to Schedule'}
           </button>
         </div>
       </div>
@@ -139,7 +150,25 @@ const PostEditor = ({ content, setContent, topic, keywords, scheduleTime, setSch
 
         {content && (
           <div className="w-full lg:w-80 border-t lg:border-t-0 lg:border-l border-slate-800 bg-slate-900/30 p-6 overflow-y-auto shrink-0">
-            <SEOAnalysis {...seoData} />
+            {canSeeSEO ? (
+              <SEOAnalysis {...seoData} />
+            ) : (
+              <div className="h-full flex flex-col items-center justify-center text-center space-y-4">
+                <div className="w-12 h-12 rounded-2xl bg-slate-800 flex items-center justify-center">
+                  <Lock className="w-6 h-6 text-slate-500" />
+                </div>
+                <div>
+                  <h4 className="text-white font-bold uppercase tracking-widest text-xs mb-1">SEO Analysis Locked</h4>
+                  <p className="text-slate-500 text-[10px] leading-relaxed">Upgrade to the Scale plan to unlock real-time SEO scoring and content optimization suggestions.</p>
+                </div>
+                <button 
+                  onClick={() => setActiveTab('billing')}
+                  className="text-primary-400 text-[10px] font-black uppercase tracking-widest hover:text-primary-300 transition-colors"
+                >
+                  View Plans &rarr;
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
