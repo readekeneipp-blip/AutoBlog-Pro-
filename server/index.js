@@ -13,6 +13,13 @@ const db = require('./db');
 
 dotenv.config();
 
+const TIER_LIMITS = {
+  free: { sites: 0, articles: 0 },
+  starter: { sites: 1, articles: 10 },
+  growth: { sites: 5, articles: 50 },
+  scale: { sites: Infinity, articles: Infinity }
+};
+
 const app = express();
 app.use((req, res, next) => {
   console.log(`${req.method} ${req.path}`);
@@ -23,6 +30,48 @@ app.use(cors({
   origin: FRONTEND_URL,
   credentials: true
 }));
+
+// Stripe Webhook needs raw body for signature verification
+app.post('/api/stripe/webhook', express.raw({type: 'application/json'}), async (req, res) => {
+  const sig = req.headers['stripe-signature'];
+  let event;
+
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+  if (webhookSecret && sig) {
+    try {
+      event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
+    } catch (err) {
+      console.error(`Webhook signature verification failed: ${err.message}`);
+      return res.status(400).send(`Webhook Error: ${err.message}`);
+    }
+  } else {
+    // Fallback for development without secret or signature
+    try {
+      event = JSON.parse(req.body.toString());
+    } catch (err) {
+      return res.status(400).send('Invalid payload');
+    }
+  }
+
+  if (event.type === 'checkout.session.completed') {
+    const session = event.data.object;
+    const plan = session.metadata?.plan;
+    const email = session.customer_email;
+
+    if (plan && email) {
+      console.log(`Stripe Webhook: Updating user ${email} to plan ${plan}`);
+      try {
+        await db.query('UPDATE users SET subscription = $1 WHERE email = $2', [plan, email]);
+      } catch (e) {
+        console.error('Database update failed in webhook:', e.message);
+      }
+    }
+  }
+
+  res.json({received: true});
+});
+
 app.use(express.json());
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-key';
@@ -129,6 +178,7 @@ app.post('/api/stripe/create-checkout', authenticateToken, async (req, res) => {
       success_url: `${origin}/dashboard?plan=${plan}`,
       cancel_url: `${origin}/dashboard?billing_cancel=true`,
       customer_email: req.user.email,
+      metadata: { plan },
     });
     res.json({ url: session.url });
   } catch (e) {
@@ -151,6 +201,24 @@ app.post('/api/generate', authenticateToken, async (req, res) => {
   const { topic, niche, keywords } = req.body;
   console.log(`Generating content for ${topic} in ${niche}...`);
   try {
+    const userResult = await db.query('SELECT subscription FROM users WHERE id = $1', [req.user.id]);
+    const subscription = userResult.rows[0]?.subscription || 'free';
+    const limits = TIER_LIMITS[subscription];
+
+    const startOfMonth = new Date();
+    startOfMonth.setDate(1);
+    startOfMonth.setHours(0, 0, 0, 0);
+
+    const countResult = await db.query(
+      'SELECT COUNT(*) FROM schedules WHERE user_id = $1 AND scheduled_time >= $2',
+      [req.user.id, startOfMonth]
+    );
+    const count = parseInt(countResult.rows[0].count);
+
+    if (count >= limits.articles) {
+      return res.status(403).json({ error: `Monthly article limit reached for ${subscription} plan (${limits.articles} articles)` });
+    }
+
     const model = genAI.getGenerativeModel({ model: 'gemini-3.5-flash' });
     console.log("Calling Gemini API...");
     const result = await model.generateContent(`Write a long SEO blog post about ${topic} in ${niche}. Keywords: ${keywords.join(', ')}. Markdown.`);
@@ -167,6 +235,17 @@ app.post('/api/generate', authenticateToken, async (req, res) => {
 app.post('/api/user/cms', authenticateToken, async (req, res) => {
   const { type, config, name } = req.body;
   try {
+    const userResult = await db.query('SELECT subscription FROM users WHERE id = $1', [req.user.id]);
+    const subscription = userResult.rows[0]?.subscription || 'free';
+    const limits = TIER_LIMITS[subscription];
+
+    const siteCountResult = await db.query('SELECT COUNT(*) FROM sites WHERE user_id = $1', [req.user.id]);
+    const siteCount = parseInt(siteCountResult.rows[0].count);
+
+    if (siteCount >= limits.sites) {
+      return res.status(403).json({ error: `Site limit reached for ${subscription} plan (${limits.sites} sites)` });
+    }
+
     const id = Date.now().toString(); // Temporary id or use UUID
     await db.query(
       'INSERT INTO sites (user_id, name, type, config) VALUES ($1, $2, $3, $4)',
@@ -199,6 +278,13 @@ app.delete('/api/user/sites/:id', authenticateToken, async (req, res) => {
 app.post('/api/schedule', authenticateToken, async (req, res) => {
   const { title, content, scheduledTime, type, siteId } = req.body;
   try {
+    const userResult = await db.query('SELECT subscription FROM users WHERE id = $1', [req.user.id]);
+    const subscription = userResult.rows[0]?.subscription || 'free';
+    
+    if (subscription !== 'growth' && subscription !== 'scale') {
+      return res.status(403).json({ error: 'Scheduling is only available on Growth and Scale plans. Please upgrade.' });
+    }
+
     const id = Date.now();
     await db.query(
       'INSERT INTO schedules (id, user_id, title, content, scheduled_time, type, status, site_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
